@@ -1,0 +1,86 @@
+[14:20, 24/09/2026] Kauan Breno😎✌️: int buzzer = 8;
+
+int botao1 = A0;
+int botao2 = A1;
+int botao3 = A2;
+
+int oitava = 0;
+int notasTocadas = 0;
+
+int ultimaNota = 0;
+
+void setup()
+{
+  pinMode(buzzer, OUTPUT);
+
+  pinMode(botao1, INPUT_PULLUP);
+  pinMode(botao2, INPUT_PULLUP);
+  pinMode(botao3, INPUT_PULLUP);
+
+  Serial.begin(9600);
+}
+
+void tocarNota(int frequencia)
+{
+  frequencia = frequencia * pow(2, oitava);
+
+  tone(buzzer, frequencia, 150);
+
+  notasTocadas++;
+  ultimaNota = frequencia;
+
+  Serial.print("Nota: ");
+  Serial.println(frequencia);
+}
+
+void loop()
+{
+  if (digitalRead(botao1) == LOW)
+  {
+    tocarNota(440);
+    delay(180);
+  }
+
+  if (digitalRead(botao2) == LOW)
+  {
+    tocarNota(494);
+    delay(180);
+  }
+
+  if (digitalRead(botao3) == LOW)
+  {
+    tocarNota(523);
+    delay(180);
+  }
+
+  if (notasTocadas >= 10)
+  {
+    Serial.println("10 notas tocadas!");
+    notasTocadas = 0;
+  }
+
+  delay(20);
+}
+[14:20, 24/09/2026] Kauan Breno😎✌️: if (digitalRead(botaoMais) == LOW)
+{
+  if (oitava < 2)
+  {
+    oitava++;
+    Serial.print("Oitava: ");
+    Serial.println(oitava);
+  }
+
+  delay(250);
+}
+
+if (digitalRead(botaoMenos) == LOW)
+{
+  if (oitava > -2)
+  {
+    oitava--;
+    Serial.print("Oitava: ");
+    Serial.println(oitava);
+  }
+
+  delay(250);
+}
