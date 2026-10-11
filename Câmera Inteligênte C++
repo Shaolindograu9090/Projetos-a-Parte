@@ -1,0 +1,118 @@
+#include <iostream>
+#include <thread>
+#include <mutex>
+#include <opencv2/opencv.hpp>
+#include <pigpio.h>
+
+using namespace std;
+using namespace cv;
+
+#define PAN_PIN 17
+#define TILT_PIN 27
+#define MIN_AREA 500
+#define THRESHOLD 25
+
+class CameraStream {
+private:
+    VideoCapture cap;
+    Mat currentFrame;
+    mutex frameMutex;
+    bool running;
+    thread worker;
+
+    void update() {
+        while (running) {
+            Mat temp;
+            if (cap.read(temp)) {
+                lock_guard<mutex> lock(frameMutex);
+                currentFrame = temp;
+            }
+        }
+    }
+
+public:
+    CameraStream() : running(true) {
+        cap.open(0);
+        cap.set(CAP_PROP_FRAME_WIDTH, 640);
+        cap.set(CAP_PROP_FRAME_HEIGHT, 480);
+        worker = thread(&CameraStream::update, this);
+    }
+    Mat getFrame() {
+        lock_guard<mutex> lock(frameMutex);
+        return currentFrame.clone();
+    }
+    ~CameraStream() {
+        running = false;
+        if (worker.joinable()) worker.join();
+        cap.release();
+    }
+};
+
+class ServoControl {
+public:
+    ServoControl() {
+        if (gpioInitialise() < 0) exit(1);
+        gpioSetMode(PAN_PIN, PI_OUTPUT);
+        gpioSetMode(TILT_PIN, PI_OUTPUT);
+    }
+    void moveTo(int x, int y) {
+        gpioServo(PAN_PIN, x);
+        gpioServo(TILT_PIN, y);
+    }
+    ~ServoControl() { gpioTerminate(); }
+};
+
+int main() {
+    CameraStream cam;
+    ServoControl servos;
+    CascadeClassifier faceCascade("haarcascade_frontalface_default.xml");
+    
+    Mat gray1, gray2, frame;
+    int panX = 1500, tiltY = 1500;
+
+    while (true) {
+        frame = cam.getFrame();
+        if (frame.empty()) continue;
+
+        cvtColor(frame, gray2, COLOR_BGR2GRAY);
+        if (gray1.empty()) {
+            gray1 = gray2.clone();
+            continue;
+        }
+
+        // Detecção de Movimento
+        Mat diff;
+        absdiff(gray1, gray2, diff);
+        blur(diff, diff, Size(3, 3));
+        threshold(diff, diff, THRESHOLD, 255, THRESH_BINARY);
+        
+        vector<vector<Point>> contours;
+        findContours(diff, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+        
+        bool motionFound = false;
+        for (const auto& c : contours) {
+            if (contourArea(c) > MIN_AREA) {
+                Rect r = boundingRect(c);
+                panX += (r.x + r.width/2 - 320) / 10;
+                tiltY += (r.y + r.height/2 - 240) / 10;
+                motionFound = true;
+                break;
+            }
+        }
+
+        // Detecção de Face se não houver movimento
+        if (!motionFound) {
+            vector<Rect> faces;
+            faceCascade.detectMultiScale(gray2, faces, 1.2, 2);
+            for (const auto& f : faces) {
+                panX += (f.x + f.width/2 - 320) / 10;
+                tiltY += (f.y + f.height/2 - 240) / 10;
+            }
+        }
+
+        servos.moveTo(panX, tiltY);
+        gray1 = gray2.clone();
+
+        if (waitKey(1) == 'q') break;
+    }
+    return 0;
