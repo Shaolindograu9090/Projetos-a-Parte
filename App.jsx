@@ -1,0 +1,98 @@
+import React,{useCallback,useEffect,useMemo,useState} from 'react';
+import {motion,AnimatePresence} from 'framer-motion';
+import {Activity, ShieldCheck, GitFork, Star, RefreshCw, Search, Bell, ChevronDown, ExternalLink, ArrowUpRight, Clock3, Github, Bug, Newspaper, Radar, SlidersHorizontal, CircleHelp, X, CheckCircle2, AlertTriangle, Menu, Download, Zap} from 'lucide-react';
+import {AreaChart,Area,BarChart,Bar,XAxis,YAxis,CartesianGrid,Tooltip,ResponsiveContainer,PieChart,Pie,Cell} from 'recharts';
+import Sidebar from './components/Sidebar.jsx';
+import MetricCard from './components/MetricCard.jsx';
+import {loadAll} from './lib/api.js';
+
+const COLORS=['#7c83ff','#40d6c1','#ffbd69','#ff6e8a','#a78bfa','#60a5fa','#f472b6','#34d399'];
+const fmt=n=>new Intl.NumberFormat('pt-BR',{notation:n>9999?'compact':'standard',maximumFractionDigits:1}).format(n||0);
+const dateFmt=s=>s?new Date(s).toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'}):'—';
+const timeFmt=s=>s?new Date(s*1000).toLocaleString('pt-BR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+const sampleRepos=[
+ {name:'react',fullName:'facebook/react',description:'The library for web and native user interfaces.',stars:238000,forks:49000,issues:850,language:'JavaScript',pushedAt:new Date().toISOString(),url:'https://github.com/facebook/react'},
+ {name:'vscode',fullName:'microsoft/vscode',description:'Visual Studio Code',stars:174000,forks:34000,issues:7200,language:'TypeScript',pushedAt:new Date().toISOString(),url:'https://github.com/microsoft/vscode'},
+ {name:'next.js',fullName:'vercel/next.js',description:'The React framework for the web.',stars:132000,forks:28000,issues:3100,language:'JavaScript',pushedAt:new Date().toISOString(),url:'https://github.com/vercel/next.js'},
+ {name:'transformers',fullName:'huggingface/transformers',description:'State-of-the-art machine learning for PyTorch, TensorFlow and JAX.',stars:145000,forks:29000,issues:1900,language:'Python',pushedAt:new Date().toISOString(),url:'https://github.com/huggingface/transformers'},
+ {name:'ollama',fullName:'ollama/ollama',description:'Get up and running with large language models locally.',stars:155000,forks:13000,issues:900,language:'Go',pushedAt:new Date().toISOString(),url:'https://github.com/ollama/ollama'},
+ {name:'linux',fullName:'torvalds/linux',description:'Linux kernel source tree.',stars:195000,forks:57000,issues:0,language:'C',pushedAt:new Date().toISOString(),url:'https://github.com/torvalds/linux'}
+];
+const sampleKev={count:1200,version:'dados de demonstração',released:null,ransomware:280,vendors:[{name:'Microsoft',count:120},{name:'Apple',count:75},{name:'Google',count:62},{name:'Cisco',count:48},{name:'Adobe',count:43},{name:'Oracle',count:37},{name:'Linux',count:33},{name:'Ivanti',count:25}],yearCounts:[{year:'2020',total:140},{year:'2021',total:210},{year:'2022',total:220},{year:'2023',total:190},{year:'2024',total:185},{year:'2025',total:200},{year:'2026',total:80}],latest:[]};
+const sampleNews=[
+ {id:1,title:'AI infrastructure and open-source models: what developers are building',score:428,by:'tech_reader',time:Date.now()/1000,url:'https://news.ycombinator.com',comments:182},
+ {id:2,title:'A practical guide to building reliable systems',score:312,by:'systems_dev',time:Date.now()/1000-3600,url:'https://news.ycombinator.com',comments:96},
+ {id:3,title:'The state of software supply-chain security',score:265,by:'securebuild',time:Date.now()/1000-7200,url:'https://news.ycombinator.com',comments:71}
+];
+const navCopy={
+ overview:['Visão geral','Inteligência de tecnologia em tempo real.','Visão consolidada de código aberto, vulnerabilidades e notícias da comunidade.'],
+ security:['Cibersegurança','Risco, exposição e vulnerabilidades conhecidas.','Catálogo KEV da CISA: vulnerabilidades com exploração conhecida.'],
+ opensource:['Open source','Ecossistema público de desenvolvimento.','Indicadores públicos de repositórios do GitHub.'],
+ signals:['Radar tech','O que está chamando atenção da comunidade.','Histórias populares do Hacker News neste momento.'],
+ settings:['Preferências','Personalize sua experiência.','Filtros e preferências locais do painel.'],
+ help:['Sobre os dados','Transparência e proveniência.','Fontes públicas, atualização sob demanda e limitações de API.']
+};
+export default function App(){
+ const [active,setActive]=useState('overview'),[collapsed,setCollapsed]=useState(false),[data,setData]=useState({repos:null,kev:null,news:null,errors:[]}),[busy,setBusy]=useState(true),[lastSync,setLastSync]=useState(null),[query,setQuery]=useState(''),[sort,setSort]=useState('stars'),[period,setPeriod]=useState('7d'),[toast,setToast]=useState(''),[showSources,setShowSources]=useState(false);
+ const refresh=useCallback(async()=>{setBusy(true);try{const result=await loadAll();setData(result);setLastSync(new Date());}finally{setBusy(false);}},[]);
+ useEffect(()=>{refresh();},[refresh]);
+ useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(''),3200);return()=>clearTimeout(t);},[toast]);
+ const repos=data.repos||sampleRepos,kev=data.kev||sampleKev,news=data.news||sampleNews;
+ const languages=useMemo(()=>Object.entries(repos.reduce((a,r)=>{a[r.language]=(a[r.language]||0)+1;return a;},{})).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value),[repos]);
+ const filteredRepos=useMemo(()=>repos.filter(r=>`${r.name} ${r.fullName} ${r.language}`.toLowerCase().includes(query.toLowerCase())).sort((a,b)=>(b[sort]||0)-(a[sort]||0)),[repos,query,sort]);
+ const title=navCopy[active]||navCopy.overview;
+ const totalStars=repos.reduce((s,r)=>s+r.stars,0),totalForks=repos.reduce((s,r)=>s+r.forks,0);
+ const exportCsv=()=>{const rows=[['Repositorio','Linguagem','Estrelas','Forks','Issues abertas'],...filteredRepos.map(r=>[r.fullName,r.language,r.stars,r.forks,r.issues])];const csv=rows.map(row=>row.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(';')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}));a.download='techpulse-repositorios.csv';a.click();URL.revokeObjectURL(a.href);setToast('CSV exportado com sucesso');};
+ return <div className="app-shell">
+  <Sidebar active={active} setActive={setActive} collapsed={collapsed} setCollapsed={setCollapsed}/>
+  <main className={`main ${collapsed?'wide':''}`}>
+   <header className="topbar"><div className="crumb"><span>PLATAFORMA</span><b>/</b><strong>{title[0]}</strong></div><div className="top-actions"><div className="system-pill"><span className="live-dot"/> APIs públicas</div><button className="icon-btn" title="Sobre as fontes" onClick={()=>setShowSources(!showSources)}><CircleHelp size={18}/></button><div className="avatar">TP</div></div></header>
+   <div className="page-content">
+    <motion.section className="page-heading" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}}><div><div className="overline"><span className="overline-line"/> TECH INTELLIGENCE <span className="overline-date">{new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</span></div><h1>{title[0]}<span className="heading-period">.</span></h1><p>{title[2]}</p></div><div className="heading-actions"><button className="button-secondary" onClick={exportCsv}><Download size={15}/> Exportar CSV</button><button className="button-primary" onClick={refresh} disabled={busy}><RefreshCw size={15} className={busy?'spin':''}/> {busy?'Atualizando':'Atualizar dados'}</button></div></motion.section>
+    {data.errors?.length>0&&<div className="notice"><AlertTriangle size={16}/><span>Algumas fontes não responderam. Os blocos sem conexão usam dados ilustrativos; métricas ilustrativas não representam números atuais.</span></div>}
+    {showSources&&<motion.div className="source-panel" initial={{opacity:0,height:0}} animate={{opacity:1,height:'auto'}}><button className="source-close" onClick={()=>setShowSources(false)}><X size={16}/></button><b>Fontes & metodologia</b><p>GitHub REST API: metadados públicos de repositórios. CISA KEV: catálogo de vulnerabilidades exploradas conhecidas. Hacker News: histórias populares da API pública. Dados atualizados sob demanda; a disponibilidade depende de terceiros e limites de requisição.</p><div className="source-links"><a href="https://docs.github.com/en/rest/repos" target="_blank" rel="noreferrer">GitHub API <ExternalLink size={12}/></a><a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noreferrer">CISA KEV <ExternalLink size={12}/></a><a href="https://github.com/HackerNews/API" target="_blank" rel="noreferrer">Hacker News API <ExternalLink size={12}/></a></div></motion.div>}
+    <div className="section-label"><span>01</span> INDICADORES PRINCIPAIS <div className="label-rule"/></div>
+    <section className="metrics-grid">
+      <MetricCard label="Vulnerabilidades KEV" value={fmt(kev.count)} detail={data.kev?'Catálogo oficial CISA':'Modo de demonstração'} icon={ShieldCheck} tone="violet" index={0}/>
+      <MetricCard label="Estrelas monitoradas" value={fmt(totalStars)} detail={`${repos.length} repositórios públicos`} icon={Star} tone="blue" index={1}/>
+      <MetricCard label="Forks acumulados" value={fmt(totalForks)} detail="Sinal de reutilização de código" icon={GitFork} tone="mint" index={2}/>
+      <MetricCard label="Notícias no radar" value={news.length} detail="Hacker News · top stories" icon={Radar} tone="amber" index={3}/>
+    </section>
+    <div className="section-label"><span>02</span> EXPLORAÇÃO DE DADOS <div className="label-rule"/><span className="section-note"><span className="live-dot"/> {busy?'Sincronizando fontes':`Atualizado ${lastSync?lastSync.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'—'}`}</span></div>
+    <section className="charts-grid">
+      <motion.article className="panel chart-panel" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:.12}}><div className="panel-head"><div><span className="panel-kicker">SEGURANÇA · CISA</span><h2>Vulnerabilidades adicionadas</h2><p>Registros no catálogo por ano de inclusão</p></div><span className="chart-tag"><ShieldCheck size={13}/> KEV</span></div>
+       <div className="chart-legend"><span><i className="legend-square violet-bg"/> CVEs adicionadas</span><span className="legend-muted">Fonte oficial · CISA</span></div>
+       <div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><AreaChart data={kev.yearCounts} margin={{top:12,right:8,left:-18,bottom:0}}><defs><linearGradient id="kevFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#8885ff" stopOpacity={.36}/><stop offset="100%" stopColor="#8885ff" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 5" stroke="#252d40" vertical={false}/><XAxis dataKey="year" axisLine={false} tickLine={false} tick={{fill:'#7f8ba3',fontSize:11}}/><YAxis axisLine={false} tickLine={false} tick={{fill:'#7f8ba3',fontSize:11}}/><Tooltip contentStyle={{background:'#111827',border:'1px solid #303a50',borderRadius:10,color:'#e9edf8'}}/><Area type="monotone" dataKey="total" name="Vulnerabilidades" stroke="#8b88ff" strokeWidth={2.5} fill="url(#kevFill)" activeDot={{r:5,stroke:'#111827',strokeWidth:2}}/></AreaChart></ResponsiveContainer></div>
+       <div className="chart-foot"><span>Catálogo acumulado: <b>{fmt(kev.count)}</b></span><span className="foot-accent">Exploração confirmada pela CISA</span></div>
+      </motion.article>
+      <motion.article className="panel chart-panel" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:.2}}><div className="panel-head"><div><span className="panel-kicker">ECOSSISTEMA · GITHUB</span><h2>Popularidade por projeto</h2><p>Estrelas públicas dos repositórios monitorados</p></div><span className="chart-tag blue-tag"><Github size={13}/> OPEN SOURCE</span></div>
+       <div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><BarChart data={[...repos].sort((a,b)=>b.stars-a.stars).slice(0,6).map(r=>({...r,short:r.name.length>13?r.name.slice(0,12)+'…':r.name}))} margin={{top:16,right:8,left:-16,bottom:0}}><CartesianGrid strokeDasharray="3 5" stroke="#252d40" vertical={false}/><XAxis dataKey="short" axisLine={false} tickLine={false} tick={{fill:'#7f8ba3',fontSize:10}}/><YAxis axisLine={false} tickLine={false} tick={{fill:'#7f8ba3',fontSize:10}} tickFormatter={v=>fmt(v)}/><Tooltip contentStyle={{background:'#111827',border:'1px solid #303a50',borderRadius:10,color:'#e9edf8'}} formatter={v=>[fmt(v),'Estrelas']}/><Bar dataKey="stars" name="Estrelas" radius={[5,5,0,0]} maxBarSize={36}>{repos.slice(0,6).map((r,i)=><Cell key={r.fullName} fill={COLORS[i%COLORS.length]}/>)}</Bar></BarChart></ResponsiveContainer></div>
+       <div className="chart-foot"><span>Estrelas combinadas: <b>{fmt(totalStars)}</b></span><span className="foot-accent">Dados do GitHub REST API</span></div>
+      </motion.article>
+      <motion.article className="panel chart-panel vendor-panel" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:.26}}><div className="panel-head"><div><span className="panel-kicker">SUPERFÍCIE DE RISCO</span><h2>Fornecedores mais citados</h2><p>Quantidade de registros no catálogo KEV</p></div><span className="chart-tag rose-tag"><Bug size={13}/> VULNERABILIDADES</span></div>
+       <div className="vendor-chart"><div className="donut"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={kev.vendors.slice(0,6)} dataKey="count" nameKey="name" innerRadius="68%" outerRadius="92%" paddingAngle={3} stroke="none">{kev.vendors.slice(0,6).map((v,i)=><Cell key={v.name} fill={COLORS[i%COLORS.length]}/>)}</Pie><Tooltip contentStyle={{background:'#111827',border:'1px solid #303a50',borderRadius:10,color:'#e9edf8'}}/></PieChart></ResponsiveContainer><div className="donut-center"><b>{fmt(kev.count)}</b><small>registros</small></div></div><div className="vendor-list">{kev.vendors.slice(0,6).map((v,i)=><div className="vendor-row" key={v.name}><div><i style={{background:COLORS[i%COLORS.length]}}/>{v.name}</div><b>{fmt(v.count)}</b></div>)}</div></div>
+       <div className="chart-foot"><span>Ransomware: <b>{fmt(kev.ransomware)}</b> registros marcados</span><span className="foot-accent">Priorize correções com contexto</span></div>
+      </motion.article>
+      <motion.article className="panel language-panel" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:.32}}><div className="panel-head"><div><span className="panel-kicker">ENGENHARIA DE SOFTWARE</span><h2>Stack dos projetos</h2><p>Linguagens presentes no conjunto monitorado</p></div><span className="chart-tag mint-tag"><Activity size={13}/> STACK</span></div>
+       <div className="stack-list">{languages.slice(0,7).map((l,i)=><div className="stack-row" key={l.name}><div className="stack-label"><span>{l.name}</span><b>{l.value} {l.value===1?'projeto':'projetos'}</b></div><div className="stack-track"><motion.div className="stack-fill" initial={{width:0}} animate={{width:`${l.value/Math.max(...languages.map(x=>x.value))*100}%`}} transition={{duration:.8,delay:i*.08}} style={{background:COLORS[i%COLORS.length]}}/></div></div>)}</div>
+       <div className="chart-foot"><span>Universo observado: <b>{repos.length} projetos</b></span><span className="foot-accent">Amostra selecionada, não o GitHub inteiro</span></div>
+      </motion.article>
+    </section>
+    <div className="section-label"><span>03</span> MONITORAMENTO <div className="label-rule"/></div>
+    <section className="lower-grid">
+     <motion.article className="panel repo-panel" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:.36}}><div className="panel-head table-head"><div><span className="panel-kicker">GITHUB · REPOSITÓRIOS</span><h2>Projetos em observação</h2><p>Indicadores públicos e links para a fonte</p></div><button className="text-button" onClick={exportCsv}><Download size={14}/> CSV</button></div>
+      <div className="table-tools"><div className="search-box"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar projeto ou linguagem..."/>{query&&<button onClick={()=>setQuery('')}><X size={13}/></button>}</div><div className="sort-box"><SlidersHorizontal size={14}/><select value={sort} onChange={e=>setSort(e.target.value)}><option value="stars">Ordenar: estrelas</option><option value="forks">Ordenar: forks</option><option value="issues">Ordenar: issues</option></select><ChevronDown size={13}/></div></div>
+      <div className="table-scroll"><table><thead><tr><th>REPOSITÓRIO</th><th>LINGUAGEM</th><th>ESTRELAS</th><th>FORKS</th><th>ISSUES</th><th></th></tr></thead><tbody>{filteredRepos.map((r,i)=><motion.tr key={r.fullName} layout initial={{opacity:0}} animate={{opacity:1}} transition={{delay:i*.025}}><td><div className="repo-name"><div className="repo-icon"><Github size={16}/></div><div><b>{r.name}</b><small>{r.fullName}</small></div></div></td><td><span className="language-pill"><i style={{background:COLORS[languages.findIndex(l=>l.name===r.language)%COLORS.length]||COLORS[0]}}/>{r.language}</span></td><td><span className="table-number"><Star size={13}/>{fmt(r.stars)}</span></td><td>{fmt(r.forks)}</td><td>{fmt(r.issues)}</td><td><a className="row-link" href={r.url} target="_blank" rel="noreferrer" title="Abrir no GitHub"><ArrowUpRight size={15}/></a></td></motion.tr>)}</tbody></table>{!filteredRepos.length&&<div className="empty-state">Nenhum projeto encontrado para “{query}”.</div>}</div>
+      <div className="table-footer"><span>Exibindo <b>{filteredRepos.length}</b> de {repos.length} repositórios</span><span className="footer-live"><span className="live-dot"/>{data.repos?'Dados ao vivo':'Fallback ilustrativo'}</span></div>
+     </motion.article>
+     <motion.article className="panel news-panel" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:.42}}><div className="panel-head"><div><span className="panel-kicker">COMMUNITY RADAR</span><h2>Em alta agora</h2><p>Histórias populares no Hacker News</p></div><span className="news-count">{news.length} sinais</span></div>
+      <div className="news-list"><AnimatePresence>{news.map((n,i)=><motion.a key={n.id} className="news-item" href={n.url} target="_blank" rel="noreferrer" initial={{opacity:0,x:10}} animate={{opacity:1,x:0}} transition={{delay:i*.05}}><div className="news-rank">{String(i+1).padStart(2,'0')}</div><div className="news-content"><b>{n.title}</b><div className="news-meta"><span><Zap size={12}/>{fmt(n.score)} pontos</span><span><Newspaper size={12}/>{fmt(n.comments)} comentários</span></div></div><ExternalLink size={14} className="news-arrow"/></motion.a>)}</AnimatePresence></div>
+      <a className="all-news" href="https://news.ycombinator.com/" target="_blank" rel="noreferrer">Explorar Hacker News <ArrowUpRight size={15}/></a>
+     </motion.article>
+    </section>
+    <footer className="footer"><div className="footer-brand"><div className="brand-mark mini"><Activity size={13}/></div><b>tech<span>pulse</span></b><span className="footer-copy">© {new Date().getFullYear()} · Tech intelligence</span></div><div className="footer-right"><span>Dados públicos · Atualização manual</span><span className="footer-live"><span className="live-dot"/>{busy?'Sincronizando':'Painel pronto'}</span></div></footer>
+   </div>
+  </main>
+  <AnimatePresence>{toast&&<motion.div className="toast" initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0,y:10}}><CheckCircle2 size={17}/>{toast}</motion.div>}</AnimatePresence>
+ </div>
+}
